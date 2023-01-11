@@ -6,23 +6,18 @@ import pathlib
 import requests
 
 
-def get_page_data(file_type, page_number):
+def get_page_data(compress_type, page_number):
     """
     abstract json data from query
-    :param file_type: file we are interested in
+    :param compress_type: compressed file type ie zip, gzip
     :param page_number: page number for api to call
     :return: data of the page in json
     """
     headers = {
         'accept': 'application/json',
     }
-    if "apps" not in file_type and ("." in file_type or "*" in file_type) :
-        url = f'https://api.ipfs-search.com/v1/search?q=references.name%3A%2A{file_type}' \
-              f'&type=file&page={page_number}'
-        print(f'{file_type}@{page_number} in reference')
-    else:
-        url = f'https://api.ipfs-search.com/v1/search?q={file_type}&type=file&page={page_number}'
-        print(f'{file_type}@{page_number} in wild search')
+    url = f'https://api.ipfs-search.com/v1/search?q=metadata.Content-Type%3A%22application%2F{compress_type}' \
+          f'%22&type=file&page={page_number}'
     r = requests.get(url, headers=headers)
     try:
         data = r.json()
@@ -50,36 +45,13 @@ def extract_data(page_data):
         # file_size = file['size']
         # last_seen = file['last-seen']
         # file_data = {'first-seen': first_seen, 'score': score, 'size': file_size, 'mimetype': file_type}
-        if file['mimetype'] is None or \
-                "text/plain" in file['mimetype'] \
-                or "key" in file['mimetype'] \
-                or "zip" in file['mimetype'] \
-                or "gzip" in file['mimetype'] \
-                or "tar" in file['mimetype']:
-            extracted_data[cid] = file
+        extracted_data[cid] = file
 
     return extracted_data
 
 
 def main(dir_prefix):
-    file_names = ['_rsa*',
-                  '.p12',
-                  '.pfx',
-                  '.ppk',
-                  'BEGIN PRIVATE KEY',
-                  'BEGIN OPENSSH PRIVATE KEY',
-                  '.key',
-                  '.crt',
-                  '.gpg',
-                  '.pem',
-                  '.pkey',
-                  '.priv',
-                  '.apps.googleusercontent.com',
-                  'ovpn']
-    # <em>BEGIN</em> <em>OPENSSH</em> <em>PRIVATE</em> <em>KEY</em>
-    # <em>BEGIN</em> PGP <em>PRIVATE</em> <em>KEY</em>
-    # <em>apps.googleusercontent.com</em>
-    # RSA PRIVATE KEY
+    zip_types = ['zip', 'vnd.rar', 'gzip', 'x-zip-compressed', 'x-rar-compressed', ]
     now = datetime.datetime.now()
     current_day = now.strftime("%Y-%m-%d")
     # fresh file cid
@@ -95,7 +67,7 @@ def main(dir_prefix):
     all_files = {}
 
     # load daily global fresh file
-    global_path = os.path.join(dir_prefix, f'all_files_cid.txt')
+    global_path = os.path.join(dir_prefix, f'all_video_cid.txt')
     all_daily_fresh_file = pathlib.Path(global_path)
     all_daily_cids = []
     if all_daily_fresh_file.is_file():
@@ -104,20 +76,19 @@ def main(dir_prefix):
             for line in fin:
                 all_daily_cids.append(line.replace("\n", ""))
     # collecting data
-    for v_type in file_names:
+    for v_type in zip_types:
         initial_data = get_page_data(v_type, page_number=0)
         total_page_number = initial_data['page_count']
-        initial_data_dic = extract_data(initial_data)
-        if initial_data_dic is None:
+        if initial_data is None:
             print(f"Initial {v_type} is empty")
             continue
-        all_files.update(initial_data_dic)
+        all_files.update(extract_data(initial_data))
         # due to ipfs-search api limit, only allowed 100 paging
         total_page_number = 100
         # start page number 1
         page_number = 1
         while page_number <= total_page_number:
-
+            print(f'{v_type} {page_number}')
             page_data = get_page_data(v_type, page_number)
             page_number += 1
             page_data_dic = extract_data(page_data)
